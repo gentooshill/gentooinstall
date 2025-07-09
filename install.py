@@ -256,6 +256,21 @@ def add_package_unmask(pkg_atom):
         f.write(f"{pkg_atom}\n")
     print(f"[INFO] Added unmask for {pkg_atom} to {unmaskfile}")
 
+def cleanup_temp_files():
+    print_section("Cleaning up temporary files and stage3 tarball")
+    import os
+    import glob
+    # Remove /var/tmp/portage
+    for path in ["/var/tmp/portage", "/mnt/gentoo/var/tmp/portage"]:
+        if os.path.exists(path):
+            print(f"[INFO] Removing all files in {path}")
+            os.system(f"rm -rf {path}/*")
+    # Remove stage3 tarball from /mnt/gentoo
+    stage3_files = glob.glob("/mnt/gentoo/stage3-*.tar.xz")
+    for f in stage3_files:
+        print(f"[INFO] Removing stage3 tarball {f}")
+        os.remove(f)
+
 def install_stage3():
     global INIT_SYSTEM
     print_section("Downloading and Extracting Stage3")
@@ -315,6 +330,7 @@ def install_stage3():
     # Ensure make.conf and package dirs after stage3 extraction
     ensure_make_conf(INIT_SYSTEM)
     ensure_package_dirs()
+    cleanup_temp_files()
     pause()
 
 def setup_binpkg():
@@ -459,7 +475,9 @@ def update_world():
     ensure_gcc_openmp()
     ensure_kernel_sources()
     ensure_toolchain_and_headers()
+    cleanup_temp_files()
     run_cmd("emerge --ask --verbose --update --deep --newuse @world")
+    cleanup_temp_files()
     pause()
 
 def configure_base_system():
