@@ -15,6 +15,8 @@ DEVICES = {
     "home": "",
     "swap": ""
 }
+# Add a global to track init system choice
+INIT_SYSTEM = None
 
 def run_cmd(cmd, check=True, shell=True, input_text=None):
     print(f"\n[RUN] {cmd}")
@@ -200,7 +202,62 @@ def set_time():
             run_cmd(f"date {date_str}", check=False)
     pause()
 
+def ensure_make_conf(init_system="systemd"):
+    print_section("Ensuring make.conf is present and correct")
+    make_conf_path = "/mnt/gentoo/etc/portage/make.conf"
+    use_flags = "systemd tkip gnome -ios -ipod -ibm pipewire -pulseaudio" if init_system == "systemd" else "openrc tkip gnome -ios -ipod -ibm pipewire -pulseaudio"
+    make_conf_content = f'''# These settings were set by the catalyst build script that automatically
+# built this stage.
+# Please consult /usr/share/portage/config/make.conf.example for a more
+# detailed example.
+GENTOO_MIRRORS="https://ftp-stud.hs-esslingen.de/pub/Mirrors/gentoo https://distfiles.gentoo.org http://ftp.romnet.org/gentoo/"
+COMMON_FLAGS="-march=native -O2 -pipe"
+CFLAGS="${{COMMON_FLAGS}}"
+CXXFLAGS="${{COMMON_FLAGS}}"
+FCFLAGS="${{COMMON_FLAGS}}"
+FFLAGS="${{COMMON_FLAGS}}"
+FEATURES="candy binpkg-request-signature getbinpkg parallel-fetch parallel-install"
+MAKEOPTS="-j5 -l6"
+USE="{use_flags}"
+CPU_FLAGS_X86="aes avx avx2 f16c fma3 mmx mmxext pclmul popcnt rdrand sse sse2 sse3 sse4_1 sse4_2 ssse3"
+ACCEPT_LICENSE="@BINARY-REDISTRIBUTABLE"
+
+# NOTE: This stage was built with the bindist USE flag enabled
+
+# This sets the language of build output to English.
+# Please keep this setting intact when reporting bugs.
+LC_MESSAGES=C.utf8
+GRUB_PLATFORMS="efi-64"
+'''
+    with open(make_conf_path, "w") as f:
+        f.write(make_conf_content)
+    print(f"[INFO] make.conf written to {make_conf_path}")
+
+def ensure_package_dirs():
+    import os
+    portage_dir = "/mnt/gentoo/etc/portage"
+    for sub in ["package.use", "package.unmask"]:
+        path = os.path.join(portage_dir, sub)
+        if not os.path.exists(path):
+            os.makedirs(path)
+            print(f"[INFO] Created {path} as directory.")
+
+def add_package_use(pkg, useflags):
+    ensure_package_dirs()
+    usefile = "/mnt/gentoo/etc/portage/package.use/auto"
+    with open(usefile, "a") as f:
+        f.write(f"{pkg} {useflags}\n")
+    print(f"[INFO] Added USE flags for {pkg} to {usefile}")
+
+def add_package_unmask(pkg_atom):
+    ensure_package_dirs()
+    unmaskfile = "/mnt/gentoo/etc/portage/package.unmask/auto"
+    with open(unmaskfile, "a") as f:
+        f.write(f"{pkg_atom}\n")
+    print(f"[INFO] Added unmask for {pkg_atom} to {unmaskfile}")
+
 def install_stage3():
+    global INIT_SYSTEM
     print_section("Downloading and Extracting Stage3")
     import re
     import urllib.request
@@ -215,21 +272,26 @@ def install_stage3():
     if choice == "1":
         url = "https://distfiles.gentoo.org/releases/amd64/autobuilds/current-stage3-amd64-systemd/"
         prefix = "stage3-amd64-systemd-"
+        INIT_SYSTEM = "systemd"
     else:
-    if choice == "2":
-        url = "https://distfiles.gentoo.org/releases/amd64/autobuilds/current-stage3-amd64-openrc/"
-        prefix = "stage3-amd64-openrc-"
-    else:
-        if choice == "3":
-            url = "https://distfiles.gentoo.org/releases/amd64/autobuilds/current-stage3-amd64-systemd-desktop/"
-            prefix = "stage3-amd64-systemd-desktop-"
+        if choice == "2":
+            url = "https://distfiles.gentoo.org/releases/amd64/autobuilds/current-stage3-amd64-openrc/"
+            prefix = "stage3-amd64-openrc-"
+            INIT_SYSTEM = "openrc"
         else:
-            if choice == "4":
-                url = "https://distfiles.gentoo.org/releases/amd64/autobuilds/current-stage3-amd64-openrc-desktop/"
-                prefix = "stage3-amd64-openrc-desktop-"
+            if choice == "3":
+                url = "https://distfiles.gentoo.org/releases/amd64/autobuilds/current-stage3-amd64-systemd-desktop/"
+                prefix = "stage3-amd64-systemd-desktop-"
+                INIT_SYSTEM = "systemd"
             else:
-                url = "https://distfiles.gentoo.org/releases/amd64/autobuilds/current-stage3-amd64-systemd/"
-                prefix = "stage3-amd64-systemd-"
+                if choice == "4":
+                    url = "https://distfiles.gentoo.org/releases/amd64/autobuilds/current-stage3-amd64-openrc-desktop/"
+                    prefix = "stage3-amd64-openrc-desktop-"
+                    INIT_SYSTEM = "openrc"
+                else:
+                    url = "https://distfiles.gentoo.org/releases/amd64/autobuilds/current-stage3-amd64-systemd/"
+                    prefix = "stage3-amd64-systemd-"
+                    INIT_SYSTEM = "systemd"
     suffix = ".tar.xz"
     print(f"[INFO] Fetching stage3 list from {url}")
     try:
@@ -250,6 +312,9 @@ def install_stage3():
         run_cmd(f"cd /mnt/gentoo && tar xvf {stage3_file} --xattrs")
     except Exception as e:
         print(f"[ERROR] Failed to download or extract stage3: {e}")
+    # Ensure make.conf and package dirs after stage3 extraction
+    ensure_make_conf(INIT_SYSTEM)
+    ensure_package_dirs()
     pause()
 
 def setup_binpkg():
@@ -318,8 +383,21 @@ def emerge_sync():
 
 def select_profile():
     print_section("Selecting Portage Profile")
-    run_cmd("eselect profile list")
-    idx = input("Enter the number of the desired systemd profile: ").strip()
+    import subprocess
+    global INIT_SYSTEM
+    if INIT_SYSTEM:
+        print(f"[INFO] Filtering profiles for {INIT_SYSTEM}...")
+        filter_str = INIT_SYSTEM
+        result = subprocess.run(f"eselect profile list | grep {filter_str}", shell=True, capture_output=True, text=True)
+        filtered = result.stdout.strip()
+        if not filtered:
+            print(f"[WARN] No profiles found for {filter_str}. Showing all profiles.")
+            run_cmd("eselect profile list")
+        else:
+            print(filtered)
+    else:
+        run_cmd("eselect profile list")
+    idx = input("Enter the number of the desired profile: ").strip()
     run_cmd(f"eselect profile set {idx}")
     pause()
 
