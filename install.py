@@ -51,8 +51,27 @@ def partition_disk():
     disk = input("Enter target disk (e.g., /dev/nvme0n1 or /dev/sda): ").strip()
     if not yesno(f"Partition and wipe {disk}? THIS WILL ERASE ALL DATA!"):
         return
-    run_cmd(f"gdisk {disk} <<EOF\no\nY\nn\n1\n2048\n+512M\nEF00\nn\n2\n\n\n8E00\nw\nY\nEOF")
-    run_cmd(f"gdisk -l {disk}")
+    # Ask for EFI size
+    efi_size = input("EFI partition size? Enter 512M or 1G [512M]: ").strip() or "512M"
+    # Ask for swap size
+    swap_size = input("Swap partition size? (e.g., 4G, 0 for none) [4G]: ").strip() or "4G"
+    # Partition layout: EFI, swap (if any), root (rest)
+    parted_cmds = [
+        f"mklabel gpt",
+        f"mkpart primary fat32 1MiB {efi_size}",
+        f"set 1 boot on"
+    ]
+    part_num = 2
+    if swap_size != "0":
+        parted_cmds.append(f"mkpart primary linux-swap {efi_size} {swap_size}")
+        part_num += 1
+        root_start = swap_size
+    else:
+        root_start = efi_size
+    parted_cmds.append(f"mkpart primary ext4 {root_start} 100%")
+    parted_script = " ; ".join(parted_cmds)
+    run_cmd(f"parted --script {disk} {parted_script}")
+    run_cmd(f"parted {disk} print")
     pause()
 
 def setup_luks_lvm():
@@ -60,14 +79,15 @@ def setup_luks_lvm():
     print_section("LUKS Encryption and LVM Setup")
     if not yesno("Do you want to use LUKS encryption and LVM?"):
         USE_LVM = False
-        # Always ask for root partition!
+        # Always ask for root, home, and swap partitions
+        DEVICES["efi"] = input("Enter EFI partition (e.g., /dev/sda1): ").strip()
         DEVICES["root"] = input("Enter root partition (e.g., /dev/sda2): ").strip()
         has_home = yesno("Do you have a separate home partition?")
         if has_home:
             DEVICES["home"] = input("Enter home partition (e.g., /dev/sda3): ").strip()
         else:
             DEVICES["home"] = ""
-        has_swap = yesno("Do you have a swap partition?")
+        has_swap = yesno("Do you want a swap partition?")
         if has_swap:
             DEVICES["swap"] = input("Enter swap partition (e.g., /dev/sda4): ").strip()
         else:
@@ -79,15 +99,16 @@ def setup_luks_lvm():
     run_cmd(f"cryptsetup open --type luks {disk} cryptcontainer")
     run_cmd("pvcreate /dev/mapper/cryptcontainer")
     run_cmd("vgcreate vg0 /dev/mapper/cryptcontainer")
+    # Ask for swap size
+    swap_size = input("Swap logical volume size? (e.g., 4G, 0 for none) [4G]: ").strip() or "4G"
     run_cmd("lvcreate --size 50G vg0 --name root")
     run_cmd("lvcreate --extents 100%FREE vg0 --name home")
-    has_swap = yesno("Do you want a swap logical volume?")
-    if has_swap:
-        swap_size = input("Enter swap size (e.g., 4G): ").strip()
+    if swap_size != "0":
         run_cmd(f"lvcreate --size {swap_size} vg0 --name swap")
         DEVICES["swap"] = "/dev/vg0/swap"
     else:
         DEVICES["swap"] = ""
+    DEVICES["efi"] = input("Enter EFI partition (e.g., /dev/sda1): ").strip()
     DEVICES["root"] = "/dev/vg0/root"
     DEVICES["home"] = "/dev/vg0/home"
     run_cmd("lvdisplay")
@@ -95,7 +116,6 @@ def setup_luks_lvm():
 
 def create_filesystems():
     print_section("Creating Filesystems")
-    DEVICES["efi"] = input("Enter EFI partition (e.g., /dev/nvme0n1p1 or /dev/sda1): ").strip()
     run_cmd(f"mkfs.vfat -F32 {DEVICES['efi']}")
     if DEVICES["root"]:
         run_cmd(f"mkfs.ext4 {DEVICES['root']}")
