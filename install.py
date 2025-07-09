@@ -202,8 +202,40 @@ def set_time():
 
 def install_stage3():
     print_section("Downloading and Extracting Stage3")
-    run_cmd("cd /mnt/gentoo && curl -O -L $(curl -s https://bouncer.gentoo.org/fetch/root/all/releases/amd64/autobuilds/latest-stage3-amd64-systemd.txt | grep -v '^#' | head -n1 | awk '{print \$1}')")
-    run_cmd("cd /mnt/gentoo && tar xvf stage3-*.tar.xz --xattrs")
+    import re
+    import urllib.request
+    import os
+    # Prompt user for systemd or openrc
+    print("Which Gentoo stage3 do you want to install?")
+    print("1) systemd (desktop)")
+    print("2) openrc (default)")
+    choice = input("Enter 1 for systemd or 2 for openrc [1]: ").strip() or "1"
+    if choice == "2":
+        url = "https://distfiles.gentoo.org/releases/amd64/autobuilds/current-stage3-amd64-openrc/"
+        prefix = "stage3-amd64-openrc-"
+    else:
+        url = "https://distfiles.gentoo.org/releases/amd64/autobuilds/current-stage3-amd64-desktop-systemd/"
+        prefix = "stage3-amd64-desktop-systemd-"
+    suffix = ".tar.xz"
+    print(f"[INFO] Fetching stage3 list from {url}")
+    try:
+        with urllib.request.urlopen(url) as response:
+            html = response.read().decode()
+        # Find all matching tarballs
+        matches = re.findall(rf'({prefix}[\w\d\-]+{re.escape(suffix)})', html)
+        if not matches:
+            print("[ERROR] No stage3 tarballs found!")
+            return
+        # Use the last one (should be the latest)
+        stage3_file = matches[-1]
+        stage3_url = url + stage3_file
+        print(f"[INFO] Downloading {stage3_url}")
+        os.makedirs("/mnt/gentoo", exist_ok=True)
+        run_cmd(f"cd /mnt/gentoo && curl -O -L {stage3_url}")
+        print(f"[INFO] Extracting {stage3_file} ...")
+        run_cmd(f"cd /mnt/gentoo && tar xvf {stage3_file} --xattrs")
+    except Exception as e:
+        print(f"[ERROR] Failed to download or extract stage3: {e}")
     pause()
 
 def configure_make_conf():
