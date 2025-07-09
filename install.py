@@ -176,11 +176,28 @@ def set_time():
     print_section("Setting Date and Time")
     run_cmd("date")
     import os
-    if os.path.exists('/usr/share/zoneinfo/iso3166.tab'):
-        run_cmd("tzselect")
+    # Timezone selection
+    print("Please enter your timezone in the format Region/City (e.g., Europe/Bucharest, America/New_York).")
+    print("You can find valid timezones in /usr/share/zoneinfo or at https://en.wikipedia.org/wiki/List_of_tz_database_time_zones")
+    tz = input("Enter your timezone: ").strip()
+    # Save to /mnt/gentoo/etc/timezone if it exists, else /etc/timezone
+    timezone_path = "/mnt/gentoo/etc/timezone" if os.path.exists("/mnt/gentoo/etc") else "/etc/timezone"
+    with open(timezone_path, "w") as f:
+        f.write(tz + "\n")
+    print(f"[INFO] Timezone '{tz}' written to {timezone_path}")
+    # Try ntpdate, but if not found, prompt user to set date manually
+    import shutil
+    if shutil.which("ntpdate"):
+        run_cmd("ntpdate pool.ntp.org")
     else:
-        print("[INFO] tzselect skipped: timezone data not present in this environment.")
-    run_cmd("ntpdate pool.ntp.org")
+        print("[INFO] ntpdate is not available in this environment.")
+        print("You can set the system date and time manually with the following command:")
+        print("  date MMDDhhmmYYYY")
+        print("For example, to set July 9, 2025, 16:30, type: date 070916302025")
+        manual = input("Would you like to set the date/time now? [y/n]: ").strip().lower()
+        if manual == "y":
+            date_str = input("Enter date/time as MMDDhhmmYYYY: ").strip()
+            run_cmd(f"date {date_str}", check=False)
     pause()
 
 def install_stage3():
