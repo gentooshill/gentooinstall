@@ -684,13 +684,14 @@ def check_portage_tmpdir():
 
 def main():
     require_root()
-    check_portage_tmpdir()
     print("Gentoo Automated Installer (Python)\n---")
     if yesno("Partition disk?"): partition_disk()
     prompt_device_paths()
     if yesno("Setup LUKS and LVM?"): setup_luks_lvm()
     if yesno("Create filesystems?"): create_filesystems()
     if yesno("Mount filesystems?"): mount_filesystems()
+    # Check tmpdir after mounting filesystems
+    check_portage_tmpdir()
     if yesno("Set date/time?"): set_time()
     if yesno("Install stage3?"): install_stage3()
     # Ask about binpkg before make.conf
