@@ -45,6 +45,19 @@ def pause(msg="Press Enter to continue..."):
 def print_section(title):
     print(f"\n{'='*60}\n{title}\n{'='*60}")
 
+def prompt_device_paths():
+    print_section("Assign Partition Devices")
+    DEVICES["efi"] = input("Enter EFI partition device (e.g., /dev/vda1): ").strip()
+    DEVICES["root"] = input("Enter root partition device (e.g., /dev/vda2): ").strip()
+    if yesno("Do you have a separate home partition?"):
+        DEVICES["home"] = input("Enter home partition device (e.g., /dev/vda3): ").strip()
+    else:
+        DEVICES["home"] = ""
+    if yesno("Do you have a swap partition?"):
+        DEVICES["swap"] = input("Enter swap partition device (e.g., /dev/vda4): ").strip()
+    else:
+        DEVICES["swap"] = ""
+
 def partition_disk():
     print_section("Disk Partitioning (UEFI, LVM, LUKS)")
     print("Refer to README for details. This will WIPE your disk!")
@@ -77,19 +90,6 @@ def setup_luks_lvm():
     print_section("LUKS Encryption and LVM Setup")
     if not yesno("Do you want to use LUKS encryption and LVM?"):
         USE_LVM = False
-        # Always ask for root, home, and swap partitions
-        DEVICES["efi"] = input("Enter EFI partition (e.g., /dev/sda1): ").strip()
-        DEVICES["root"] = input("Enter root partition (e.g., /dev/sda2): ").strip()
-        has_home = yesno("Do you have a separate home partition?")
-        if has_home:
-            DEVICES["home"] = input("Enter home partition (e.g., /dev/sda3): ").strip()
-        else:
-            DEVICES["home"] = ""
-        has_swap = yesno("Do you want a swap partition?")
-        if has_swap:
-            DEVICES["swap"] = input("Enter swap partition (e.g., /dev/sda4): ").strip()
-        else:
-            DEVICES["swap"] = ""
         return
     USE_LVM = True
     disk = input("Enter LVM partition (e.g., /dev/nvme0n1p2 or /dev/sda2): ").strip()
@@ -106,7 +106,6 @@ def setup_luks_lvm():
         DEVICES["swap"] = "/dev/vg0/swap"
     else:
         DEVICES["swap"] = ""
-    DEVICES["efi"] = input("Enter EFI partition (e.g., /dev/sda1): ").strip()
     DEVICES["root"] = "/dev/vg0/root"
     DEVICES["home"] = "/dev/vg0/home"
     run_cmd("lvdisplay")
@@ -378,6 +377,7 @@ def main():
     require_root()
     print("Gentoo Automated Installer (Python)\n---")
     if yesno("Partition disk?"): partition_disk()
+    prompt_device_paths()
     if yesno("Setup LUKS and LVM?"): setup_luks_lvm()
     if yesno("Create filesystems?"): create_filesystems()
     if yesno("Mount filesystems?"): mount_filesystems()
