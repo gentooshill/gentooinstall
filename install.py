@@ -209,13 +209,27 @@ def install_stage3():
     print("Which Gentoo stage3 do you want to install?")
     print("1) systemd (desktop)")
     print("2) openrc (default)")
-    choice = input("Enter 1 for systemd or 2 for openrc [1]: ").strip() or "1"
+    print("3) systemd (desktop)")
+    print("4) openrc (desktop)")
+    choice = input("Enter 1 for systemd, 2 for openrc, 3 for systemd (desktop) or 4 for openrc (desktop) [1]: ").strip() or "1"
+    if choice == "1":
+        url = "https://distfiles.gentoo.org/releases/amd64/autobuilds/current-stage3-amd64-systemd/"
+        prefix = "stage3-amd64-systemd-"
+    else:
     if choice == "2":
         url = "https://distfiles.gentoo.org/releases/amd64/autobuilds/current-stage3-amd64-openrc/"
         prefix = "stage3-amd64-openrc-"
     else:
-        url = "https://distfiles.gentoo.org/releases/amd64/autobuilds/current-stage3-amd64-desktop-systemd/"
-        prefix = "stage3-amd64-desktop-systemd-"
+        if choice == "3":
+            url = "https://distfiles.gentoo.org/releases/amd64/autobuilds/current-stage3-amd64-systemd-desktop/"
+            prefix = "stage3-amd64-systemd-desktop-"
+        else:
+            if choice == "4":
+                url = "https://distfiles.gentoo.org/releases/amd64/autobuilds/current-stage3-amd64-openrc-desktop/"
+                prefix = "stage3-amd64-openrc-desktop-"
+            else:
+                url = "https://distfiles.gentoo.org/releases/amd64/autobuilds/current-stage3-amd64-systemd/"
+                prefix = "stage3-amd64-systemd-"
     suffix = ".tar.xz"
     print(f"[INFO] Fetching stage3 list from {url}")
     try:
@@ -237,6 +251,25 @@ def install_stage3():
     except Exception as e:
         print(f"[ERROR] Failed to download or extract stage3: {e}")
     pause()
+
+def setup_binpkg():
+    print_section("Binary Package (binpkg) Support")
+    print("Gentoo can use pre-built binary packages to speed up installation and updates.")
+    print("This is especially useful for large packages or slow machines.")
+    use_binpkg = yesno("Do you want to enable binary package support (binpkg)?")
+    if not use_binpkg:
+        return
+    # Set make.conf path
+    import os
+    make_conf_path = "/mnt/gentoo/etc/portage/make.conf" if os.path.exists("/mnt/gentoo/etc/portage") else "/etc/portage/make.conf"
+    features_line = 'FEATURES="binpkg-request-signature getbinpkg parallel-fetch parallel-install"\n'
+    binhost_line = 'BINHOST="https://distfiles.gentoo.org/releases/amd64/binpackages/17.1/x86-64-v3/"\n'
+    # Append to make.conf
+    with open(make_conf_path, "a") as f:
+        f.write("\n# Enable binary package support (binpkg)\n")
+        f.write(features_line)
+        f.write(binhost_line)
+    print(f"[INFO] Binpkg FEATURES and BINHOST added to {make_conf_path}")
 
 def configure_make_conf():
     print_section("Configuring make.conf")
@@ -471,6 +504,8 @@ def main():
     if yesno("Mount filesystems?"): mount_filesystems()
     if yesno("Set date/time?"): set_time()
     if yesno("Install stage3?"): install_stage3()
+    # Ask about binpkg before make.conf
+    setup_binpkg()
     if yesno("Configure make.conf?"): configure_make_conf()
     if yesno("Select mirrors?"): select_mirrors()
     if yesno("Configure repos?"): configure_repos()
