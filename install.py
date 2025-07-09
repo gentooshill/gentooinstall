@@ -8,6 +8,14 @@ import sys
 import os
 import time
 
+USE_LVM = False
+DEVICES = {
+    "efi": "",
+    "root": "",
+    "home": "",
+    "swap": ""
+}
+
 def run_cmd(cmd, check=True, shell=True, input_text=None):
     print(f"\n[RUN] {cmd}")
     try:
@@ -48,36 +56,64 @@ def partition_disk():
     pause()
 
 def setup_luks_lvm():
+    global USE_LVM, DEVICES
     print_section("LUKS Encryption and LVM Setup")
-    disk = input("Enter LVM partition (e.g., /dev/nvme0n1p2 or /dev/sda2): ").strip()
-    if not yesno(f"Encrypt {disk} with LUKS?"):
+    if not yesno("Do you want to use LUKS encryption and LVM?"):
+        USE_LVM = False
+        DEVICES["root"] = input("Enter root partition (e.g., /dev/sda2): ").strip()
+        has_home = yesno("Do you have a separate home partition?")
+        if has_home:
+            DEVICES["home"] = input("Enter home partition (e.g., /dev/sda3): ").strip()
+        else:
+            DEVICES["home"] = ""
+        has_swap = yesno("Do you have a swap partition?")
+        if has_swap:
+            DEVICES["swap"] = input("Enter swap partition (e.g., /dev/sda4): ").strip()
+        else:
+            DEVICES["swap"] = ""
         return
+    USE_LVM = True
+    disk = input("Enter LVM partition (e.g., /dev/nvme0n1p2 or /dev/sda2): ").strip()
     run_cmd(f"cryptsetup -v --cipher aes-xts-plain64 --key-size 256 -y luksFormat {disk}")
     run_cmd(f"cryptsetup open --type luks {disk} cryptcontainer")
     run_cmd("pvcreate /dev/mapper/cryptcontainer")
     run_cmd("vgcreate vg0 /dev/mapper/cryptcontainer")
     run_cmd("lvcreate --size 50G vg0 --name root")
     run_cmd("lvcreate --extents 100%FREE vg0 --name home")
+    has_swap = yesno("Do you want a swap logical volume?")
+    if has_swap:
+        swap_size = input("Enter swap size (e.g., 4G): ").strip()
+        run_cmd(f"lvcreate --size {swap_size} vg0 --name swap")
+        DEVICES["swap"] = "/dev/vg0/swap"
+    else:
+        DEVICES["swap"] = ""
+    DEVICES["root"] = "/dev/vg0/root"
+    DEVICES["home"] = "/dev/vg0/home"
     run_cmd("lvdisplay")
     pause()
 
 def create_filesystems():
     print_section("Creating Filesystems")
-    disk = input("Enter EFI partition (e.g., /dev/nvme0n1p1 or /dev/sda1): ").strip()
-    run_cmd(f"mkfs.vfat -F32 {disk}")
-    run_cmd("mkfs.ext4 /dev/vg0/root")
-    run_cmd("mkfs.ext4 /dev/vg0/home")
+    DEVICES["efi"] = input("Enter EFI partition (e.g., /dev/nvme0n1p1 or /dev/sda1): ").strip()
+    run_cmd(f"mkfs.vfat -F32 {DEVICES['efi']}")
+    run_cmd(f"mkfs.ext4 {DEVICES['root']}")
+    if DEVICES["home"]:
+        run_cmd(f"mkfs.ext4 {DEVICES['home']}")
+    if DEVICES["swap"]:
+        run_cmd(f"mkswap {DEVICES['swap']}")
     pause()
 
 def mount_filesystems():
     print_section("Mounting Filesystems")
     run_cmd("mkdir -p /mnt/gentoo")
-    run_cmd("mount /dev/vg0/root /mnt/gentoo")
+    run_cmd(f"mount {DEVICES['root']} /mnt/gentoo")
     run_cmd("mkdir -p /mnt/gentoo/boot")
-    efi = input("Enter EFI partition (e.g., /dev/nvme0n1p1 or /dev/sda1): ").strip()
-    run_cmd(f"mount {efi} /mnt/gentoo/boot")
-    run_cmd("mkdir -p /mnt/gentoo/home")
-    run_cmd("mount /dev/vg0/home /mnt/gentoo/home")
+    run_cmd(f"mount {DEVICES['efi']} /mnt/gentoo/boot")
+    if DEVICES["home"]:
+        run_cmd("mkdir -p /mnt/gentoo/home")
+        run_cmd(f"mount {DEVICES['home']} /mnt/gentoo/home")
+    if DEVICES["swap"]:
+        run_cmd(f"swapon {DEVICES['swap']}")
     pause()
 
 def set_time():
@@ -203,8 +239,11 @@ def configure_lvm():
 
 def configure_fstab():
     print_section("Configuring fstab")
-    run_cmd("blkid /dev/vg0/root | awk '{print $2}' | sed 's/\"//g'")
-    run_cmd("blkid /dev/vg0/home | awk '{print $2}' | sed 's/\"//g'")
+    run_cmd(f"blkid {DEVICES['root']} | awk '{{print $2}}' | sed 's/\"//g'")
+    if DEVICES["home"]:
+        run_cmd(f"blkid {DEVICES['home']} | awk '{{print $2}}' | sed 's/\"//g'")
+    if DEVICES["swap"]:
+        run_cmd(f"blkid {DEVICES['swap']} | awk '{{print $2}}' | sed 's/\"//g'")
     run_cmd("nano -w /etc/fstab")
     pause()
 
@@ -335,7 +374,8 @@ def main():
     if yesno("Update @world?"): update_world()
     if yesno("Configure base system?"): configure_base_system()
     if yesno("Install kernel?"): install_kernel()
-    if yesno("Configure LVM?"): configure_lvm()
+    # Only run configure_lvm if using LVM
+    if USE_LVM and yesno("Configure LVM?"): configure_lvm()
     if yesno("Configure fstab?"): configure_fstab()
     if yesno("Configure mtab?"): configure_mtab()
     if yesno("Install bootloader?"): install_bootloader()
