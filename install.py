@@ -60,6 +60,7 @@ def setup_luks_lvm():
     print_section("LUKS Encryption and LVM Setup")
     if not yesno("Do you want to use LUKS encryption and LVM?"):
         USE_LVM = False
+        # Always ask for root partition!
         DEVICES["root"] = input("Enter root partition (e.g., /dev/sda2): ").strip()
         has_home = yesno("Do you have a separate home partition?")
         if has_home:
@@ -96,7 +97,10 @@ def create_filesystems():
     print_section("Creating Filesystems")
     DEVICES["efi"] = input("Enter EFI partition (e.g., /dev/nvme0n1p1 or /dev/sda1): ").strip()
     run_cmd(f"mkfs.vfat -F32 {DEVICES['efi']}")
-    run_cmd(f"mkfs.ext4 {DEVICES['root']}")
+    if DEVICES["root"]:
+        run_cmd(f"mkfs.ext4 {DEVICES['root']}")
+    else:
+        print("[ERROR] No root partition specified. Skipping mkfs.ext4 for root.")
     if DEVICES["home"]:
         run_cmd(f"mkfs.ext4 {DEVICES['home']}")
     if DEVICES["swap"]:
