@@ -7,6 +7,8 @@ import subprocess
 import sys
 import os
 import time
+import shutil
+import stat
 
 USE_LVM = False
 DEVICES = {
@@ -634,8 +636,55 @@ def post_install():
     run_cmd("prelink -amR")
     pause()
 
+def check_portage_tmpdir():
+    print_section("Checking PORTAGE_TMPDIR disk space and type")
+    tmpdir = "/mnt/gentoo/var/tmp"
+    # Check if path exists
+    if not os.path.exists(tmpdir):
+        try:
+            os.makedirs(tmpdir)
+        except Exception as e:
+            print(f"[ERROR] Could not create {tmpdir}: {e}")
+            sys.exit(1)
+    # Check if it's a directory
+    if not os.path.isdir(tmpdir):
+        print(f"[ERROR] {tmpdir} is not a directory!")
+        sys.exit(1)
+    # Check if it's a symlink
+    if os.path.islink(tmpdir):
+        print(f"[ERROR] {tmpdir} is a symlink! Please make it a real directory on disk.")
+        sys.exit(1)
+    # Check if it's on tmpfs or overlay
+    try:
+        with open("/proc/mounts") as f:
+            mounts = f.readlines()
+        found = False
+        for line in mounts:
+            parts = line.split()
+            if len(parts) < 3:
+                continue
+            mount_point = parts[1]
+            fs_type = parts[2]
+            if os.path.abspath(tmpdir).startswith(mount_point):
+                if fs_type in ("tmpfs", "overlay", "aufs", "ramfs"):  # add more if needed
+                    print(f"[ERROR] {tmpdir} is on {fs_type}! Please mount it on a real disk partition.")
+                    sys.exit(1)
+                found = True
+        if not found:
+            print(f"[WARN] Could not determine filesystem type for {tmpdir}. Proceeding, but check manually if issues arise.")
+    except Exception as e:
+        print(f"[WARN] Could not check /proc/mounts: {e}")
+    # Check free space
+    statvfs = os.statvfs(tmpdir)
+    free_gb = statvfs.f_frsize * statvfs.f_bavail / (1024**3)
+    if free_gb < 10:
+        print(f"[ERROR] {tmpdir} has only {free_gb:.1f}GB free. At least 10GB is recommended for Gentoo builds.")
+        sys.exit(1)
+    print(f"[OK] {tmpdir} is on a real disk and has {free_gb:.1f}GB free.")
+
 def main():
     require_root()
+    check_portage_tmpdir()
     print("Gentoo Automated Installer (Python)\n---")
     if yesno("Partition disk?"): partition_disk()
     prompt_device_paths()
