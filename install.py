@@ -140,7 +140,11 @@ def mount_filesystems():
 def set_time():
     print_section("Setting Date and Time")
     run_cmd("date")
-    run_cmd("tzselect")
+    import os
+    if os.path.exists('/usr/share/zoneinfo/iso3166.tab'):
+        run_cmd("tzselect")
+    else:
+        print("[INFO] tzselect skipped: timezone data not present in this environment.")
     run_cmd("ntpdate pool.ntp.org")
     pause()
 
