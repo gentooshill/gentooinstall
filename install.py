@@ -58,10 +58,32 @@ def prompt_device_paths():
     else:
         DEVICES["swap"] = ""
 
+def unmount_partitions(disk):
+    print(f"[INFO] Checking for mounted partitions on {disk}...")
+    import subprocess
+    import re
+    # Get all partitions for the disk (e.g., /dev/sda1, /dev/sda2, ...)
+    result = subprocess.run(f"lsblk -ln {disk} | awk '{{print $1}}'", shell=True, capture_output=True, text=True)
+    partitions = [f"/dev/{line.strip()}" for line in result.stdout.splitlines() if line.strip() and line.strip() != disk.split('/')[-1]]
+    # Find which are mounted
+    mounted = []
+    with open('/proc/mounts') as f:
+        mounts = f.read()
+        for part in partitions:
+            if part in mounts:
+                mounted.append(part)
+    # Unmount in reverse order (deepest first)
+    for part in reversed(mounted):
+        print(f"[INFO] Unmounting {part}...")
+        run_cmd(f"umount -lf {part}", check=False)
+    if not mounted:
+        print(f"[INFO] No mounted partitions found on {disk}.")
+
 def partition_disk():
     print_section("Disk Partitioning (UEFI, LVM, LUKS)")
     print("Refer to README for details. This will WIPE your disk!")
     disk = input("Enter target disk (e.g., /dev/nvme0n1 or /dev/sda): ").strip()
+    unmount_partitions(disk)
     if not yesno(f"Partition and wipe {disk}? THIS WILL ERASE ALL DATA!"):
         return
     # Ask for EFI size
