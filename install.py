@@ -418,7 +418,23 @@ def ensure_gcc_openmp():
     print_section("Ensuring GCC has OpenMP support")
     add_package_use("sys-devel/gcc", "openmp")
     run_cmd("emerge --ask --oneshot sys-devel/gcc")
-    print("[INFO] GCC rebuilt with OpenMP support.")
+    # Find the latest GCC version and set it as default
+    import subprocess
+    result = subprocess.run("gcc-config -l | tail -n1 | awk '{print $2}'", shell=True, capture_output=True, text=True)
+    gcc_profile = result.stdout.strip()
+    if gcc_profile:
+        print(f"[INFO] Setting active GCC profile to {gcc_profile}")
+        run_cmd(f"gcc-config {gcc_profile}")
+        run_cmd("env-update")
+        run_cmd("source /etc/profile", shell=True)
+    else:
+        print("[WARN] Could not determine GCC profile to set.")
+    # Check if OpenMP is enabled
+    result = subprocess.run("gcc -v 2>&1 | grep enable-libgomp", shell=True, capture_output=True, text=True)
+    if "--enable-libgomp" in result.stdout:
+        print("[INFO] GCC OpenMP support is enabled.")
+    else:
+        print("[ERROR] GCC does not have OpenMP support. Please check your GCC build.")
 
 def ensure_kernel_sources():
     print_section("Ensuring kernel sources are installed and symlinked")
