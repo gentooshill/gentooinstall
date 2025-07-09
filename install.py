@@ -61,16 +61,14 @@ def partition_disk():
         f"mkpart primary fat32 1MiB {efi_size}",
         f"set 1 boot on"
     ]
-    part_num = 2
     if swap_size != "0":
         parted_cmds.append(f"mkpart primary linux-swap {efi_size} {swap_size}")
-        part_num += 1
         root_start = swap_size
     else:
         root_start = efi_size
     parted_cmds.append(f"mkpart primary ext4 {root_start} 100%")
-    parted_script = " ; ".join(parted_cmds)
-    run_cmd(f"parted --script {disk} {parted_script}")
+    for cmd in parted_cmds:
+        run_cmd(f"parted --script {disk} {cmd}")
     run_cmd(f"parted {disk} print")
     pause()
 
