@@ -403,6 +403,7 @@ def select_profile():
 
 def configure_use_flags():
     print_section("Configuring USE Flags")
+    ensure_toolchain_and_headers()
     run_cmd("emerge app-portage/eix app-portage/ufed")
     run_cmd("ufed")
     pause()
@@ -447,11 +448,17 @@ def ensure_kernel_sources():
     run_cmd(f"eselect kernel set {idx}")
     print("[INFO] Kernel sources installed and symlinked.")
 
+def ensure_toolchain_and_headers():
+    print_section("Ensuring toolchain and kernel headers are present")
+    run_cmd("emerge --ask sys-kernel/linux-headers")
+    run_cmd("emerge --ask sys-devel/autoconf sys-devel/automake sys-devel/libtool")
+
 def update_world():
     print_section("Updating @world")
     # Ensure GCC OpenMP and kernel sources before world update
     ensure_gcc_openmp()
     ensure_kernel_sources()
+    ensure_toolchain_and_headers()
     run_cmd("emerge --ask --verbose --update --deep --newuse @world")
     pause()
 
