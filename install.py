@@ -264,7 +264,7 @@ def install_stage3():
     import os
     # Prompt user for systemd or openrc
     print("Which Gentoo stage3 do you want to install?")
-    print("1) systemd (desktop)")
+    print("1) systemd (default)")
     print("2) openrc (default)")
     print("3) systemd (desktop)")
     print("4) openrc (desktop)")
