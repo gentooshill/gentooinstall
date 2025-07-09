@@ -76,6 +76,19 @@ def unmount_partitions(disk):
     for part in reversed(mounted):
         print(f"[INFO] Unmounting {part}...")
         run_cmd(f"umount -lf {part}", check=False)
+    # Deactivate swap
+    for part in partitions:
+        with open('/proc/swaps') as f:
+            swaps = f.read()
+            if part in swaps:
+                print(f"[INFO] Turning off swap on {part}...")
+                run_cmd(f"swapoff {part}", check=False)
+    # Deactivate LVM
+    print("[INFO] Deactivating all LVM volume groups (if any)...")
+    run_cmd("vgchange -an", check=False)
+    # Close cryptsetup mappings
+    print("[INFO] Closing all cryptsetup mappings (if any)...")
+    run_cmd("for m in $(ls /dev/mapper | grep -v control); do cryptsetup close $m || true; done", check=False)
     if not mounted:
         print(f"[INFO] No mounted partitions found on {disk}.")
 
