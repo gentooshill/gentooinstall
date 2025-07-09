@@ -414,8 +414,28 @@ def configure_cpu_flags():
     run_cmd("nano /etc/portage/make.conf")
     pause()
 
+def ensure_gcc_openmp():
+    print_section("Ensuring GCC has OpenMP support")
+    add_package_use("sys-devel/gcc", "openmp")
+    run_cmd("emerge --ask --oneshot sys-devel/gcc")
+    print("[INFO] GCC rebuilt with OpenMP support.")
+
+def ensure_kernel_sources():
+    print_section("Ensuring kernel sources are installed and symlinked")
+    import os
+    run_cmd("emerge --ask sys-kernel/gentoo-sources")
+    # Find available kernels
+    result = run_cmd("eselect kernel list", check=False, shell=True)
+    print("[INFO] Please select the kernel to use for /usr/src/linux symlink.")
+    idx = input("Enter the number of the kernel to use: ").strip()
+    run_cmd(f"eselect kernel set {idx}")
+    print("[INFO] Kernel sources installed and symlinked.")
+
 def update_world():
     print_section("Updating @world")
+    # Ensure GCC OpenMP and kernel sources before world update
+    ensure_gcc_openmp()
+    ensure_kernel_sources()
     run_cmd("emerge --ask --verbose --update --deep --newuse @world")
     pause()
 
