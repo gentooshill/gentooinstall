@@ -205,7 +205,7 @@ def set_time():
 def ensure_make_conf(init_system="systemd"):
     print_section("Ensuring make.conf is present and correct")
     make_conf_path = "/mnt/gentoo/etc/portage/make.conf"
-    use_flags = "systemd tkip gnome -ios -ipod -ibm pipewire -pulseaudio" if init_system == "systemd" else "openrc tkip gnome -ios -ipod -ibm pipewire -pulseaudio"
+    use_flags = "openmp systemd tkip gnome -ios -ipod -ibm pipewire -pulseaudio" if init_system == "systemd" else "openrc tkip gnome -ios -ipod -ibm pipewire -pulseaudio"
     make_conf_content = f'''# These settings were set by the catalyst build script that automatically
 # built this stage.
 # Please consult /usr/share/portage/config/make.conf.example for a more
@@ -217,7 +217,8 @@ CXXFLAGS="${{COMMON_FLAGS}}"
 FCFLAGS="${{COMMON_FLAGS}}"
 FFLAGS="${{COMMON_FLAGS}}"
 FEATURES="candy binpkg-request-signature getbinpkg parallel-fetch parallel-install"
-MAKEOPTS="-j5 -l6"
+MAKEOPTS="-j4 -l5"
+PORTAGE_TMPDIR="/mnt/gentoo/var/tmp"
 USE="{use_flags}"
 CPU_FLAGS_X86="aes avx avx2 f16c fma3 mmx mmxext pclmul popcnt rdrand sse sse2 sse3 sse4_1 sse4_2 ssse3"
 ACCEPT_LICENSE="@BINARY-REDISTRIBUTABLE"
