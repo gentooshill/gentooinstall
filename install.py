@@ -452,45 +452,45 @@ def chroot_env():
     )
     run_cmd(chroot_check)
     print("[INFO] Now inside chroot. Continue with the following steps.")
-    # Write the fix_tmpdirs.py script to /mnt/gentoo/root
-    fix_script = '''#!/usr/bin/env python3
-import os, subprocess
-
-def fix():
-    for path in ["/var/tmp", "/tmp"]:
-        try:
-            out = subprocess.check_output(["findmnt", "-n", "-o", "FSTYPE", path], text=True).strip()
-            if out in ("tmpfs", "ramfs", "overlay"):
-                subprocess.run(["umount", "-lf", path], check=False)
-                if not os.path.exists(path):
-                    os.makedirs(path, exist_ok=True)
-                else:
-                    for f in os.listdir(path):
-                        fp = os.path.join(path, f)
-                        if os.path.isdir(fp):
-                            subprocess.run(["rm", "-rf", fp])
-                        else:
-                            os.remove(fp)
-        except Exception as e:
-            pass
-        os.chmod(path, 0o1777)
-    make_conf = "/etc/portage/make.conf"
-    if os.path.exists(make_conf):
-        with open(make_conf, "r") as f:
-            lines = f.readlines()
-        found = False
-        for i, line in enumerate(lines):
-            if line.strip().startswith("PORTAGE_TMPDIR"):
-                lines[i] = 'PORTAGE_TMPDIR="/var/tmp"\n'
-                found = True
-        if not found:
-            lines.append('PORTAGE_TMPDIR="/var/tmp"\n')
-        with open(make_conf, "w") as f:
-            f.writelines(lines)
-fix()
-'''
+    # Write the fix_tmpdirs.py script to /mnt/gentoo/root, line by line for robustness
+    fix_script_lines = [
+        "#!/usr/bin/env python3\n",
+        "import os, subprocess\n\n",
+        "def fix():\n",
+        "    for path in ['/var/tmp', '/tmp']:\n",
+        "        try:\n",
+        "            out = subprocess.check_output(['findmnt', '-n', '-o', 'FSTYPE', path], text=True).strip()\n",
+        "            if out in ('tmpfs', 'ramfs', 'overlay'):\n",
+        "                subprocess.run(['umount', '-lf', path], check=False)\n",
+        "                if not os.path.exists(path):\n",
+        "                    os.makedirs(path, exist_ok=True)\n",
+        "                else:\n",
+        "                    for f in os.listdir(path):\n",
+        "                        fp = os.path.join(path, f)\n",
+        "                        if os.path.isdir(fp):\n",
+        "                            subprocess.run(['rm', '-rf', fp])\n",
+        "                        else:\n",
+        "                            os.remove(fp)\n",
+        "        except Exception as e:\n",
+        "            pass\n",
+        "        os.chmod(path, 0o1777)\n",
+        "    make_conf = '/etc/portage/make.conf'\n",
+        "    if os.path.exists(make_conf):\n",
+        "        with open(make_conf, 'r') as f:\n",
+        "            lines = f.readlines()\n",
+        "        found = False\n",
+        "        for i, line in enumerate(lines):\n",
+        "            if line.strip().startswith('PORTAGE_TMPDIR'):\n",
+        "                lines[i] = 'PORTAGE_TMPDIR=\"/var/tmp\"\\n'\n",
+        "                found = True\n",
+        "        if not found:\n",
+        "            lines.append('PORTAGE_TMPDIR=\"/var/tmp\"\\n')\n",
+        "        with open(make_conf, 'w') as f:\n",
+        "            f.writelines(lines)\n",
+        "fix()\n"
+    ]
     with open("/mnt/gentoo/root/fix_tmpdirs.py", "w") as f:
-        f.write(fix_script)
+        f.writelines(fix_script_lines)
     os.chmod("/mnt/gentoo/root/fix_tmpdirs.py", 0o755)
     # After chroot, run the fix script
     run_cmd("chroot /mnt/gentoo /bin/bash -c 'python3 /root/fix_tmpdirs.py'")
