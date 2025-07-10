@@ -650,15 +650,48 @@ def ensure_kernel_sources():
     run_cmd(f"eselect kernel set {idx}")
     print("[INFO] Kernel sources installed and symlinked.")
 
+def handle_circular_dependency_and_retry(emerge_cmd, emerge_output):
+    import os
+    import re
+    import subprocess
+    # Look for the suggested USE flag change
+    match = re.search(r'- (\S+) \(Change USE: ([-+\w ]+)\)', emerge_output)
+    if match:
+        pkg = match.group(1)
+        use_flags = match.group(2).replace('Change USE:', '').strip()
+        # Determine package.use file or directory
+        use_path = '/etc/portage/package.use'
+        if os.path.isdir(use_path):
+            use_file = os.path.join(use_path, 'auto')
+        else:
+            use_file = use_path
+        # Write the USE flag override
+        with open(use_file, 'a') as f:
+            f.write(f'\n{pkg} {use_flags}\n')
+        print(f'[AUTO] Added USE flag override: {pkg} {use_flags}')
+        # Retry the emerge command
+        result = subprocess.run(emerge_cmd, shell=True)
+        if result.returncode == 0:
+            print('[OK] Emerge succeeded after breaking circular dependency.')
+            return True
+        else:
+            print('[FAIL] Emerge still failed after USE flag override.')
+    else:
+        print('[INFO] No circular dependency workaround found in emerge output.')
+    return False
+
 def robust_emerge_linux_headers():
     import subprocess
     import sys
     import re
     import os
 
-    def run(cmd):
+    def run(cmd, capture_output=False):
         print(f'[RUN] {cmd}')
-        return subprocess.run(cmd, shell=True)
+        if capture_output:
+            return subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        else:
+            return subprocess.run(cmd, shell=True)
 
     # Sync and clean
     run('emerge --sync')
@@ -667,15 +700,17 @@ def robust_emerge_linux_headers():
     run('rm -rf /var/tmp/portage/*')
 
     # Try latest available version first
-    result = run('emerge --ask sys-kernel/linux-headers')
+    result = run('emerge --ask sys-kernel/linux-headers', capture_output=True)
     if result.returncode == 0:
         print('[OK] linux-headers installed successfully.')
+        return
+    # Try to handle circular dependency automatically
+    if handle_circular_dependency_and_retry('emerge --ask sys-kernel/linux-headers', result.stdout + result.stderr):
         return
 
     # Try previous version(s) and mask broken ones
     print('[WARN] Latest linux-headers failed, trying previous version(s)...')
     out = subprocess.check_output('emerge -s ^sys-kernel/linux-headers$', shell=True, text=True)
-    # Find all available versions
     versions = re.findall(r'(\d+\.\d+)', out)
     tried = set()
     masked = set()
@@ -683,9 +718,12 @@ def robust_emerge_linux_headers():
         if v not in tried:
             tried.add(v)
             print(f'[TRY] emerge --ask =sys-kernel/linux-headers-{v}')
-            result = run(f'emerge --ask =sys-kernel/linux-headers-{v}')
+            result = run(f'emerge --ask =sys-kernel/linux-headers-{v}', capture_output=True)
             if result.returncode == 0:
                 print(f'[OK] linux-headers-{v} installed successfully.')
+                return
+            # Try to handle circular dependency automatically
+            if handle_circular_dependency_and_retry(f'emerge --ask =sys-kernel/linux-headers-{v}', result.stdout + result.stderr):
                 return
             else:
                 # Mask this version and try again
@@ -734,26 +772,26 @@ def configure_base_system():
 
 def install_kernel():
     print_section("Installing Kernel and Firmware")
-    run_cmd("emerge --ask sys-kernel/gentoo-sources")
+    run_emerge_with_auto_circular_fix("emerge --ask sys-kernel/gentoo-sources")
     run_cmd("eselect kernel list")
     idx = input("Enter the number of the kernel to use: ").strip()
     run_cmd(f"eselect kernel set {idx}")
-    run_cmd("emerge --ask sys-kernel/linux-firmware")
+    run_emerge_with_auto_circular_fix("emerge --ask sys-kernel/linux-firmware")
     if yesno("Use genkernel for kernel build?"):
-        run_cmd("emerge --ask sys-kernel/genkernel")
+        run_emerge_with_auto_circular_fix("emerge --ask sys-kernel/genkernel")
         run_cmd("nano -w /etc/genkernel.conf")
         run_cmd("genkernel all")
     else:
-        run_cmd("emerge --ask sys-apps/pciutils")
+        run_emerge_with_auto_circular_fix("emerge --ask sys-apps/pciutils")
         run_cmd("cd /usr/src/linux && make menuconfig")
         run_cmd("cd /usr/src/linux && make && make modules_install && make install")
-        run_cmd("emerge --ask sys-kernel/dracut")
+        run_emerge_with_auto_circular_fix("emerge --ask sys-kernel/dracut")
         run_cmd("dracut --kver=$(ls /lib/modules | tail -n1)")
     pause()
 
 def configure_lvm():
     print_section("Configuring LVM")
-    run_cmd("emerge --ask sys-fs/lvm2")
+    run_emerge_with_auto_circular_fix("emerge --ask sys-fs/lvm2")
     run_cmd("nano -w /etc/lvm/lvm.conf")
     pause()
 
@@ -835,23 +873,23 @@ def configure_time():
 
 def post_install():
     print_section("Post-Installation Steps")
-    run_cmd("emerge --ask sys-apps/mlocate")
-    run_cmd("emerge --ask sys-fs/xfsprogs sys-fs/exfat-utils sys-fs/dosfstools sys-fs/ntfs3g")
-    run_cmd("emerge --ask app-admin/sudo")
-    run_cmd("emerge --ask sys-power/powertop")
+    run_emerge_with_auto_circular_fix("emerge --ask sys-apps/mlocate")
+    run_emerge_with_auto_circular_fix("emerge --ask sys-fs/xfsprogs sys-fs/exfat-utils sys-fs/dosfstools sys-fs/ntfs3g")
+    run_emerge_with_auto_circular_fix("emerge --ask app-admin/sudo")
+    run_emerge_with_auto_circular_fix("emerge --ask sys-power/powertop")
     run_cmd("nano -w /etc/systemd/system/powertop.service")
     run_cmd("systemctl enable powertop.service")
     run_cmd("nano -w /etc/portage/make.conf")
     run_cmd("nano -w /etc/X11/xorg.conf.d/20-intel.conf")
     run_cmd("nano -w /etc/portage/make.conf")
-    run_cmd("emerge --ask xorg-server")
-    run_cmd("emerge --ask app-admin/ccze app-arch/unp app-editors/vim app-eselect/eselect-awk app-misc/screen app-shells/gentoo-zsh-completions app-vim/colorschemes app-vim/eselect-syntax app-vim/genutils app-vim/ntp-syntax media-gfx/feh sys-process/htop x11-terms/rxvt-unicode")
+    run_emerge_with_auto_circular_fix("emerge --ask xorg-server")
+    run_emerge_with_auto_circular_fix("emerge --ask app-admin/ccze app-arch/unp app-editors/vim app-eselect/eselect-awk app-misc/screen app-shells/gentoo-zsh-completions app-vim/colorschemes app-vim/eselect-syntax app-vim/genutils app-vim/ntp-syntax media-gfx/feh sys-process/htop x11-terms/rxvt-unicode")
     run_cmd("echo 'PORTAGE_NICENESS=\"15\"' >> /etc/portage/make.conf")
     run_cmd("nano -w /etc/portage/make.conf")
     run_cmd("nano -w /etc/portage/package.accept_keywords")
     run_cmd("nano -w /etc/portage/package.unmask")
     run_cmd("nano -w /etc/portage/package.mask")
-    run_cmd("emerge --ask app-portage/layman")
+    run_emerge_with_auto_circular_fix("emerge --ask app-portage/layman")
     run_cmd("layman -L")
     run_cmd("layman -a <overlay_name>")
     run_cmd("layman -S")
@@ -863,10 +901,10 @@ def post_install():
     run_cmd("nano -w /etc/portage/repos.conf/local.conf")
     run_cmd("grep --color -E 'vmx|svm' /proc/cpuinfo")
     run_cmd("ls /dev/kvm")
-    run_cmd("emerge --askv app-emulation/qemu")
+    run_emerge_with_auto_circular_fix("emerge --askv app-emulation/qemu")
     run_cmd("gpasswd -a <username> kvm")
     run_cmd("systemctl enable libvirtd.service")
-    run_cmd("emerge --askv prelink")
+    run_emerge_with_auto_circular_fix("emerge --askv prelink")
     run_cmd("env-update")
     run_cmd("nano /etc/prelink.conf")
     run_cmd("prelink -amR")
@@ -987,6 +1025,19 @@ def ensure_disk_backed_tmpdirs():
         with open(make_conf, "w") as f:
             f.writelines(lines)
         print("[INFO] Ensured PORTAGE_TMPDIR is set to /var/tmp in make.conf")
+
+def run_emerge_with_auto_circular_fix(emerge_cmd):
+    import subprocess
+    result = subprocess.run(emerge_cmd, shell=True, capture_output=True, text=True)
+    if result.returncode == 0:
+        print(f'[OK] {emerge_cmd} succeeded.')
+        return 0
+    # Try to handle circular dependency automatically
+    from __main__ import handle_circular_dependency_and_retry
+    if handle_circular_dependency_and_retry(emerge_cmd, result.stdout + result.stderr):
+        return 0
+    print(f'[FATAL] {emerge_cmd} failed, even after circular dependency workaround.')
+    return result.returncode
 
 def main():
     require_root()
