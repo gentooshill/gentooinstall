@@ -726,8 +726,8 @@ def robust_emerge_linux_headers():
 
     # Sync and clean
     run('emerge --sync')
-    run('eclean-dist --deep')
-    run('eclean-pkg --deep')
+    run_if_exists('eclean-dist --deep')
+    run_if_exists('eclean-pkg --deep')
     run('rm -rf /var/tmp/portage/*')
 
     # Try latest available version first
@@ -1069,6 +1069,20 @@ def run_emerge_with_auto_circular_fix(emerge_cmd):
         return 0
     print(f'[FATAL] {emerge_cmd} failed, even after circular dependency workaround.')
     return result.returncode
+
+def run_if_exists(cmd):
+    import shutil
+    exe = cmd.split()[0]
+    if shutil.which(exe):
+        return run_cmd(cmd)
+    else:
+        print(f"[WARN] Command not found: {exe}, attempting to install app-portage/eclean...")
+        run_emerge_with_auto_circular_fix('emerge --ask app-portage/eclean')
+        if shutil.which(exe):
+            return run_cmd(cmd)
+        else:
+            print(f"[WARN] Still not found: {exe}, skipping.")
+        return None
 
 def main():
     require_root()
