@@ -329,58 +329,56 @@ def install_stage3():
         run_cmd(f"cd /mnt/gentoo && curl -O -L {stage3_url}")
         print(f"[INFO] Extracting {stage3_file} ...")
         run_cmd(f"cd /mnt/gentoo && tar xvf {stage3_file} --xattrs")
-        # Write the chroot check script (no indentation)
-        check_script = '''#!/usr/bin/env python3
-import os, sys
-
-def print_section(title):
-    print("\n" + "="*60)
-    print(title)
-    print("="*60)
-
-def check_portage_tmpdir():
-    print_section("Checking PORTAGE_TMPDIR disk space and type (chroot)")
-    tmpdir = "/var/tmp"
-    if not os.path.exists(tmpdir):
-        print("[ERROR] {} does not exist!".format(tmpdir))
-        sys.exit(1)
-    if not os.path.isdir(tmpdir):
-        print("[ERROR] {} is not a directory!".format(tmpdir))
-        sys.exit(1)
-    if os.path.islink(tmpdir):
-        print("[ERROR] {} is a symlink! Please make it a real directory on disk.".format(tmpdir))
-        sys.exit(1)
-    try:
-        with open("/proc/mounts") as f:
-            mounts = f.readlines()
-        found = False
-        for line in mounts:
-            parts = line.split()
-            if len(parts) < 3:
-                continue
-            mount_point = parts[1]
-            fs_type = parts[2]
-            if os.path.abspath(tmpdir).startswith(mount_point):
-                if fs_type in ("tmpfs", "overlay", "aufs", "ramfs"):
-                    print("[ERROR] {} is on {}! Please mount it on a real disk partition.".format(tmpdir, fs_type))
-                    sys.exit(1)
-                found = True
-        if not found:
-            print("[WARN] Could not determine filesystem type for {}. Proceeding, but check manually if issues arise.".format(tmpdir))
-    except Exception as e:
-        print("[WARN] Could not check /proc/mounts: {}".format(e))
-    statvfs = os.statvfs(tmpdir)
-    free_gb = statvfs.f_frsize * statvfs.f_bavail / (1024**3)
-    if free_gb < 10:
-        print("[ERROR] {} has only {:.1f}GB free. At least 10GB is recommended for Gentoo builds.".format(tmpdir, free_gb))
-        sys.exit(1)
-    print("[OK] {} is on a real disk and has {:.1f}GB free.".format(tmpdir, free_gb))
-
-if __name__ == "__main__":
-    check_portage_tmpdir()
-'''
+        # Write the chroot check script line by line to avoid indentation and string literal issues
+        check_script_lines = [
+            "#!/usr/bin/env python3\n",
+            "import os, sys\n\n",
+            "def print_section(title):\n",
+            "    print(\"\\n\" + \"=\"*60)\n",
+            "    print(title)\n",
+            "    print(\"=\"*60)\n\n",
+            "def check_portage_tmpdir():\n",
+            "    print_section(\"Checking PORTAGE_TMPDIR disk space and type (chroot)\")\n",
+            "    tmpdir = \"/var/tmp\"\n",
+            "    if not os.path.exists(tmpdir):\n",
+            "        print(\"[ERROR] {} does not exist!\".format(tmpdir))\n",
+            "        sys.exit(1)\n",
+            "    if not os.path.isdir(tmpdir):\n",
+            "        print(\"[ERROR] {} is not a directory!\".format(tmpdir))\n",
+            "        sys.exit(1)\n",
+            "    if os.path.islink(tmpdir):\n",
+            "        print(\"[ERROR] {} is a symlink! Please make it a real directory on disk.\".format(tmpdir))\n",
+            "        sys.exit(1)\n",
+            "    try:\n",
+            "        with open(\"/proc/mounts\") as f2:\n",
+            "            mounts = f2.readlines()\n",
+            "        found = False\n",
+            "        for line in mounts:\n",
+            "            parts = line.split()\n",
+            "            if len(parts) < 3:\n",
+            "                continue\n",
+            "            mount_point = parts[1]\n",
+            "            fs_type = parts[2]\n",
+            "            if os.path.abspath(tmpdir).startswith(mount_point):\n",
+            "                if fs_type in (\"tmpfs\", \"overlay\", \"aufs\", \"ramfs\"):\n",
+            "                    print(\"[ERROR] {} is on {}! Please mount it on a real disk partition.\".format(tmpdir, fs_type))\n",
+            "                    sys.exit(1)\n",
+            "                found = True\n",
+            "        if not found:\n",
+            "            print(\"[WARN] Could not determine filesystem type for {}. Proceeding, but check manually if issues arise.\".format(tmpdir))\n",
+            "    except Exception as e:\n",
+            "        print(\"[WARN] Could not check /proc/mounts: {}\".format(e))\n",
+            "    statvfs = os.statvfs(tmpdir)\n",
+            "    free_gb = statvfs.f_frsize * statvfs.f_bavail / (1024**3)\n",
+            "    if free_gb < 10:\n",
+            "        print(\"[ERROR] {} has only {:.1f}GB free. At least 10GB is recommended for Gentoo builds.\".format(tmpdir, free_gb))\n",
+            "        sys.exit(1)\n",
+            "    print(\"[OK] {} is on a real disk and has {:.1f}GB free.\".format(tmpdir, free_gb))\n\n",
+            "if __name__ == \"__main__\":\n",
+            "    check_portage_tmpdir()\n"
+        ]
         with open("/mnt/gentoo/root/check_portage_tmpdir.py", "w") as f:
-            f.write(check_script)
+            f.writelines(check_script_lines)
         os.chmod("/mnt/gentoo/root/check_portage_tmpdir.py", 0o755)
         print("[INFO] Wrote /mnt/gentoo/root/check_portage_tmpdir.py for chroot disk check.")
     except Exception as e:
