@@ -654,23 +654,54 @@ def handle_circular_dependency_and_retry(emerge_cmd, emerge_output):
     import os
     import re
     import subprocess
-    # Find all suggested USE flag changes in the output
-    suggestions = re.findall(r'- (\S+) \(Change USE: ([^\)]+)\)', emerge_output)
+    import unicodedata
+    # Find all suggested USE flag changes in the output (robust, multi-line, extra whitespace, etc)
+    suggestions = set()
+    for match in re.finditer(r'-\s*([\w\-/+.@:=]+)\s*\(Change USE:\s*([^\)]+)\)', emerge_output, re.MULTILINE):
+        pkg = match.group(1)
+        use_flags = match.group(2)
+        # Normalize whitespace, remove non-printable chars
+        pkg = ''.join(c for c in unicodedata.normalize('NFKC', pkg) if c.isprintable()).strip()
+        use_flags = ''.join(c for c in unicodedata.normalize('NFKC', use_flags) if c.isprintable()).strip()
+        # Remove trailing punctuation, quotes, etc
+        pkg = pkg.strip('"\'\n\r\t .;:')
+        use_flags = use_flags.strip('"\'\n\r\t .;:')
+        if pkg and use_flags:
+            suggestions.add((pkg, use_flags))
     if not suggestions:
         print('[INFO] No circular dependency workaround found in emerge output.')
         return False
+    # Avoid duplicate entries in package.use
+    use_path = '/etc/portage/package.use'
+    if os.path.isdir(use_path):
+        use_file = os.path.join(use_path, 'auto')
+    else:
+        use_file = use_path
+    existing_lines = set()
+    if os.path.exists(use_file):
+        with open(use_file, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    existing_lines.add(line)
+    applied = False
     for pkg, use_flags in suggestions:
-        use_flags = use_flags.strip()
-        # Determine package.use file or directory
-        use_path = '/etc/portage/package.use'
-        if os.path.isdir(use_path):
-            use_file = os.path.join(use_path, 'auto')
-        else:
-            use_file = use_path
-        # Write the USE flag override
-        with open(use_file, 'a') as f:
-            f.write(f'\n{pkg} {use_flags}\n')
-        print(f'[AUTO] Added USE flag override: {pkg} {use_flags}')
+        entry = f'{pkg} {use_flags}'
+        # Also add the package name without version for general future-proofing
+        pkg_base = re.sub(r'-[0-9][^/]*$', '', pkg)  # Remove version suffix if present
+        general_entry = f'{pkg_base} {use_flags}' if pkg_base != pkg else None
+        # Add both specific and general entries if not already present
+        for ent in filter(None, [entry, general_entry]):
+            if ent not in existing_lines:
+                with open(use_file, 'a') as f:
+                    f.write(f'\n{ent}\n')
+                print(f'[AUTO] Added USE flag override: {ent}')
+                applied = True
+            else:
+                print(f'[INFO] USE flag override already present: {ent}')
+    if not applied:
+        print('[INFO] All suggested USE flag overrides already present. Not retrying emerge.')
+        return False
     # Retry the emerge command ONCE
     result = subprocess.run(emerge_cmd, shell=True)
     if result.returncode == 0:
