@@ -666,8 +666,8 @@ def robust_emerge_linux_headers():
     run('eclean-pkg --deep')
     run('rm -rf /var/tmp/portage/*')
 
-    # Try latest stable
-    result = run('emerge -av sys-kernel/linux-headers')
+    # Try latest available version first
+    result = run('emerge --ask sys-kernel/linux-headers')
     if result.returncode == 0:
         print('[OK] linux-headers installed successfully.')
         return
@@ -682,8 +682,8 @@ def robust_emerge_linux_headers():
     for v in versions:
         if v not in tried:
             tried.add(v)
-            print(f'[TRY] emerge -av =sys-kernel/linux-headers-{v}')
-            result = run(f'emerge -av =sys-kernel/linux-headers-{v}')
+            print(f'[TRY] emerge --ask =sys-kernel/linux-headers-{v}')
+            result = run(f'emerge --ask =sys-kernel/linux-headers-{v}')
             if result.returncode == 0:
                 print(f'[OK] linux-headers-{v} installed successfully.')
                 return
