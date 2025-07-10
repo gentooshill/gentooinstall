@@ -10,6 +10,7 @@ import time
 import shutil
 import stat
 import textwrap
+import re
 
 USE_LVM = False
 DEVICES = {
@@ -593,7 +594,9 @@ def chroot_env():
 def emerge_sync():
     print_section("Syncing Portage Tree")
     run_cmd("emerge --sync")
-    run_cmd("emerge-webrsync")
+    # Before running emerge-webrsync, remove timestamp and use --revert
+    run_cmd("rm -f /var/db/repos/gentoo/metadata/timestamp.x")
+    run_cmd("emerge-webrsync --revert")
     pause()
 
 def select_profile():
@@ -743,31 +746,57 @@ def robust_emerge_linux_headers():
     run_if_exists('eclean-pkg --deep')
     run('rm -rf /var/tmp/portage/*')
 
+    # Find latest ~amd64 linux-headers version
+    out = subprocess.check_output('emerge -s ^sys-kernel/linux-headers$', shell=True, text=True)
+    # Find all versions, including ~amd64
+    versions = re.findall(r'sys-kernel/linux-headers-([\d.]+[\w\-]*)', out)
+    if not versions:
+        print('[FATAL] Could not find any linux-headers versions.')
+        sys.exit(1)
+    latest = sorted(versions, key=lambda v: [int(x) if x.isdigit() else x for x in re.split(r'(\d+)', v)], reverse=True)[0]
+    print(f'[INFO] Latest linux-headers version: {latest}')
+    # Accept ~amd64 for latest version
+    accept_keywords_path = '/etc/portage/package.accept_keywords'
+    if os.path.isdir(accept_keywords_path):
+        accept_file = os.path.join(accept_keywords_path, 'auto')
+    else:
+        accept_file = accept_keywords_path
+    accept_line = f'=sys-kernel/linux-headers-{latest} ~amd64'
+    already = False
+    if os.path.exists(accept_file):
+        with open(accept_file, 'r') as f:
+            for line in f:
+                if accept_line in line:
+                    already = True
+                    break
+    if not already:
+        with open(accept_file, 'a') as f:
+            f.write(f'\n{accept_line}\n')
+        print(f'[AUTO] Added to package.accept_keywords: {accept_line}')
+    else:
+        print(f'[INFO] package.accept_keywords already contains: {accept_line}')
     # Try latest available version first
-    result = run('emerge --ask sys-kernel/linux-headers', capture_output=True)
+    result = run(f'emerge --verbose --nospinner --quiet-build=n =sys-kernel/linux-headers-{latest}', capture_output=True)
     if result.returncode == 0:
-        print('[OK] linux-headers installed successfully.')
+        print(f'[OK] linux-headers-{latest} installed successfully.')
         return
     # Try to handle circular dependency automatically
-    if handle_circular_dependency_and_retry('emerge --ask sys-kernel/linux-headers', result.stdout + result.stderr):
+    if handle_circular_dependency_and_retry(f'emerge --verbose --nospinner --quiet-build=n =sys-kernel/linux-headers-{latest}', result.stdout + result.stderr):
         return
-
     # Try previous version(s) and mask broken ones
     print('[WARN] Latest linux-headers failed, trying previous version(s)...')
-    out = subprocess.check_output('emerge -s ^sys-kernel/linux-headers$', shell=True, text=True)
-    versions = re.findall(r'(\d+\.\d+)', out)
     tried = set()
     masked = set()
     for v in versions:
         if v not in tried:
             tried.add(v)
-            print(f'[TRY] emerge --ask =sys-kernel/linux-headers-{v}')
-            result = run(f'emerge --ask =sys-kernel/linux-headers-{v}', capture_output=True)
+            print(f'[TRY] emerge --verbose --nospinner --quiet-build=n =sys-kernel/linux-headers-{v}')
+            result = run(f'emerge --verbose --nospinner --quiet-build=n =sys-kernel/linux-headers-{v}', capture_output=True)
             if result.returncode == 0:
                 print(f'[OK] linux-headers-{v} installed successfully.')
                 return
             # Try to handle circular dependency automatically
-            if handle_circular_dependency_and_retry(f'emerge --ask =sys-kernel/linux-headers-{v}', result.stdout + result.stderr):
+            if handle_circular_dependency_and_retry(f'emerge --verbose --nospinner --quiet-build=n =sys-kernel/linux-headers-{v}', result.stdout + result.stderr):
                 return
             else:
                 # Mask this version and try again
