@@ -334,19 +334,21 @@ def install_stage3():
 import os, sys
 
 def print_section(title):
-    print(f"\n{'='*60}\n{title}\n{'='*60}")
+    print("\n" + "="*60)
+    print(title)
+    print("="*60)
 
 def check_portage_tmpdir():
     print_section("Checking PORTAGE_TMPDIR disk space and type (chroot)")
     tmpdir = "/var/tmp"
     if not os.path.exists(tmpdir):
-        print(f"[ERROR] {tmpdir} does not exist!")
+        print("[ERROR] {} does not exist!".format(tmpdir))
         sys.exit(1)
     if not os.path.isdir(tmpdir):
-        print(f"[ERROR] {tmpdir} is not a directory!")
+        print("[ERROR] {} is not a directory!".format(tmpdir))
         sys.exit(1)
     if os.path.islink(tmpdir):
-        print(f"[ERROR] {tmpdir} is a symlink! Please make it a real directory on disk.")
+        print("[ERROR] {} is a symlink! Please make it a real directory on disk.".format(tmpdir))
         sys.exit(1)
     try:
         with open("/proc/mounts") as f:
@@ -360,19 +362,19 @@ def check_portage_tmpdir():
             fs_type = parts[2]
             if os.path.abspath(tmpdir).startswith(mount_point):
                 if fs_type in ("tmpfs", "overlay", "aufs", "ramfs"):
-                    print(f"[ERROR] {tmpdir} is on {fs_type}! Please mount it on a real disk partition.")
+                    print("[ERROR] {} is on {}! Please mount it on a real disk partition.".format(tmpdir, fs_type))
                     sys.exit(1)
                 found = True
         if not found:
-            print(f"[WARN] Could not determine filesystem type for {tmpdir}. Proceeding, but check manually if issues arise.")
+            print("[WARN] Could not determine filesystem type for {}. Proceeding, but check manually if issues arise.".format(tmpdir))
     except Exception as e:
-        print(f"[WARN] Could not check /proc/mounts: {e}")
+        print("[WARN] Could not check /proc/mounts: {}".format(e))
     statvfs = os.statvfs(tmpdir)
     free_gb = statvfs.f_frsize * statvfs.f_bavail / (1024**3)
     if free_gb < 10:
-        print(f"[ERROR] {tmpdir} has only {free_gb:.1f}GB free. At least 10GB is recommended for Gentoo builds.")
+        print("[ERROR] {} has only {:.1f}GB free. At least 10GB is recommended for Gentoo builds.".format(tmpdir, free_gb))
         sys.exit(1)
-    print(f"[OK] {tmpdir} is on a real disk and has {free_gb:.1f}GB free.")
+    print("[OK] {} is on a real disk and has {:.1f}GB free.".format(tmpdir, free_gb))
 
 if __name__ == "__main__":
     check_portage_tmpdir()
