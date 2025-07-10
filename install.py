@@ -596,7 +596,7 @@ def emerge_sync():
     run_cmd("emerge --sync")
     # Before running emerge-webrsync, remove timestamp and use --revert
     run_cmd("rm -f /var/db/repos/gentoo/metadata/timestamp.x")
-    run_cmd("emerge-webrsync --revert")
+    run_cmd("emerge-webrsync --quiet")
     pause()
 
 def select_profile():
@@ -740,19 +740,38 @@ def robust_emerge_linux_headers():
         else:
             return subprocess.run(cmd, shell=True)
 
-    # Sync and clean
-    run('emerge --sync')
+    # Ensure Portage tree exists
+    portage_tree_exists = (
+        os.path.exists('/usr/portage/profiles/repo_name') or
+        os.path.exists('/var/db/repos/gentoo/profiles/repo_name')
+    )
+    if not portage_tree_exists:
+        print('[FATAL] Portage tree not found. Please sync your Portage tree (emerge --sync or emerge-webrsync).')
+        sys.exit(1)
+
+    # Try to sync
+    sync_result = run('emerge --sync')
+    if hasattr(sync_result, 'returncode') and sync_result.returncode != 0:
+        print('[FATAL] emerge --sync failed. Check your network and mirrors.')
+        sys.exit(1)
+
     run_if_exists('eclean-dist --deep')
     run_if_exists('eclean-pkg --deep')
     run('rm -rf /var/tmp/portage/*')
 
-    # Find latest ~amd64 linux-headers version
-    out = subprocess.check_output('emerge -s ^sys-kernel/linux-headers$', shell=True, text=True)
-    # Find all versions, including ~amd64
+    # Find latest ~amd64 linux-headers version robustly
+    out = subprocess.getoutput('emerge -s ^sys-kernel/linux-headers$')
     versions = re.findall(r'sys-kernel/linux-headers-([\d.]+[\w\-]*)', out)
     if not versions:
-        print('[FATAL] Could not find any linux-headers versions.')
-        sys.exit(1)
+        print('[WARN] No linux-headers versions found with emerge -s. Trying emerge -av sys-kernel/linux-headers...')
+        out2 = subprocess.getoutput('emerge -av sys-kernel/linux-headers')
+        versions = re.findall(r'sys-kernel/linux-headers-([\d.]+[\w\-]*)', out2)
+        if not versions:
+            print('[FATAL] Could not find any linux-headers versions. Debug output:')
+            print('Output of emerge -s ^sys-kernel/linux-headers$:\n', out)
+            print('Output of emerge -av sys-kernel/linux-headers:\n', out2)
+            print('Your Portage tree may be corrupt, not synced, or your network/mirrors may be down.')
+            sys.exit(1)
     latest = sorted(versions, key=lambda v: [int(x) if x.isdigit() else x for x in re.split(r'(\d+)', v)], reverse=True)[0]
     print(f'[INFO] Latest linux-headers version: {latest}')
     # Accept ~amd64 for latest version
