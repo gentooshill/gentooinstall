@@ -105,7 +105,7 @@ def partition_disk():
     if not yesno(f"Partition and wipe {disk}? THIS WILL ERASE ALL DATA!"):
         return
     # Ask for EFI size
-    efi_size = input("EFI partition size? Enter 512M or 1G [512M]: ").strip() or "512M"
+    efi_size = input("EFI partition size? Enter 512M or 1G [1G]: ").strip() or "1G"
     # Ask for swap size
     swap_size = input("Swap partition size? (e.g., 4G, 0 for none) [4G]: ").strip() or "4G"
     # Partition layout: EFI, swap (if any), root (rest)
@@ -654,6 +654,7 @@ def robust_emerge_linux_headers():
     import subprocess
     import sys
     import re
+    import os
 
     def run(cmd):
         print(f'[RUN] {cmd}')
@@ -671,13 +672,14 @@ def robust_emerge_linux_headers():
         print('[OK] linux-headers installed successfully.')
         return
 
-    # Try previous version(s)
+    # Try previous version(s) and mask broken ones
     print('[WARN] Latest linux-headers failed, trying previous version(s)...')
     out = subprocess.check_output('emerge -s ^sys-kernel/linux-headers$', shell=True, text=True)
     # Find all available versions
-    versions = re.findall(r'Available versions:.*?((?:\d+\.)+\d+)', out)
+    versions = re.findall(r'(\d+\.\d+)', out)
     tried = set()
-    for v in re.findall(r'(\d+\.\d+)', out):
+    masked = set()
+    for v in versions:
         if v not in tried:
             tried.add(v)
             print(f'[TRY] emerge -av =sys-kernel/linux-headers-{v}')
@@ -685,7 +687,14 @@ def robust_emerge_linux_headers():
             if result.returncode == 0:
                 print(f'[OK] linux-headers-{v} installed successfully.')
                 return
-    print('[FATAL] All attempts to install linux-headers failed. Please check Gentoo bugzilla or try again later.')
+            else:
+                # Mask this version and try again
+                print(f'[MASK] Masking broken version: sys-kernel/linux-headers-{v}')
+                with open('/etc/portage/package.mask', 'a') as f:
+                    f.write(f'\n=sys-kernel/linux-headers-{v}\n')
+                masked.add(v)
+                run('emerge --sync')
+    print('[FATAL] All attempts to install linux-headers failed, even after masking broken versions. Please check Gentoo bugzilla or try again later.')
     sys.exit(1)
 
 def ensure_toolchain_and_headers():
