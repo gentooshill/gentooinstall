@@ -741,9 +741,36 @@ def check_portage_tmpdir():
         sys.exit(1)
     print(f"[OK] {tmpdir} is on a real disk and has {free_gb:.1f}GB free.")
 
+def remount_tmpfs_if_needed():
+    """Check /run and /dev/shm, and remount with larger size if they are tmpfs and nearly full."""
+    import subprocess
+    import re
+    print_section("Checking and remounting tmpfs mounts if needed (/run, /dev/shm)")
+    mounts = [('/run', 'run'), ('/dev/shm', 'dev/shm')]
+    for mount_point, label in mounts:
+        try:
+            df_out = subprocess.check_output(['df', '-h', mount_point], text=True)
+            lines = df_out.strip().split('\n')
+            if len(lines) < 2:
+                continue
+            usage = lines[1].split()
+            size = usage[1]
+            used = usage[2]
+            avail = usage[3]
+            use_percent = int(usage[4].replace('%',''))
+            fs_type = subprocess.check_output(['findmnt', '-n', '-o', 'FSTYPE', mount_point], text=True).strip()
+            if fs_type == 'tmpfs' and use_percent > 90:
+                print(f"[WARN] {mount_point} is tmpfs and {use_percent}% full. Remounting with size=4G...")
+                subprocess.run(['mount', '-o', 'remount,size=4G', mount_point], check=False)
+            else:
+                print(f"[INFO] {mount_point} is {fs_type} and {use_percent}% full. No remount needed.")
+        except Exception as e:
+            print(f"[WARN] Could not check/remount {mount_point}: {e}")
+
 def main():
     require_root()
     print("Gentoo Automated Installer (Python)\n---")
+    remount_tmpfs_if_needed()
     if yesno("Partition disk?"): partition_disk()
     prompt_device_paths()
     if yesno("Setup LUKS and LVM?"): setup_luks_lvm()
@@ -758,6 +785,7 @@ def main():
     if yesno("Configure repos?"): configure_repos()
     if yesno("Copy DNS info?"): copy_dns()
     if yesno("Mount pseudo filesystems?"): mount_pseudo()
+    remount_tmpfs_if_needed()  # Check again before chroot/build
     if yesno("Chroot into environment?"): chroot_env()
     if yesno("Sync portage tree?"): emerge_sync()
     if yesno("Select portage profile?"): select_profile()
