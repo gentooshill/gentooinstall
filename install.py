@@ -690,7 +690,13 @@ def robust_emerge_linux_headers():
             else:
                 # Mask this version and try again
                 print(f'[MASK] Masking broken version: sys-kernel/linux-headers-{v}')
-                with open('/etc/portage/package.mask', 'a') as f:
+                mask_path = '/etc/portage/package.mask'
+                if os.path.isdir(mask_path):
+                    os.makedirs(mask_path, exist_ok=True)
+                    mask_file = os.path.join(mask_path, 'auto')
+                else:
+                    mask_file = mask_path
+                with open(mask_file, 'a') as f:
                     f.write(f'\n=sys-kernel/linux-headers-{v}\n')
                 masked.add(v)
                 run('emerge --sync')
