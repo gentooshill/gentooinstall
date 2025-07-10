@@ -332,8 +332,10 @@ def install_stage3():
         # Write the chroot check script (no indentation)
         check_script = '''#!/usr/bin/env python3
 import os, sys
+
 def print_section(title):
     print(f"\n{'='*60}\n{title}\n{'='*60}")
+
 def check_portage_tmpdir():
     print_section("Checking PORTAGE_TMPDIR disk space and type (chroot)")
     tmpdir = "/var/tmp"
@@ -371,6 +373,7 @@ def check_portage_tmpdir():
         print(f"[ERROR] {tmpdir} has only {free_gb:.1f}GB free. At least 10GB is recommended for Gentoo builds.")
         sys.exit(1)
     print(f"[OK] {tmpdir} is on a real disk and has {free_gb:.1f}GB free.")
+
 if __name__ == "__main__":
     check_portage_tmpdir()
 '''
