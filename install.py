@@ -24,13 +24,25 @@ INIT_SYSTEM = None
 def run_cmd(cmd, check=True, shell=True, input_text=None):
     print(f"\n[RUN] {cmd}")
     try:
-        result = subprocess.run(cmd, shell=shell, check=check, text=True, input=input_text)
-        return result
-    except subprocess.CalledProcessError as e:
-        print(f"[ERROR] Command failed: {e}")
+        import subprocess
+        process = subprocess.Popen(cmd, shell=shell, text=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        while True:
+            output = process.stdout.readline()
+            if output == '' and process.poll() is not None:
+                break
+            if output:
+                print(output.strip())
+        rc = process.poll()
+        if check and rc != 0:
+            print(f"[ERROR] Command failed: {cmd}")
+            if not yesno("Continue anyway?"):
+                sys.exit(1)
+        return rc
+    except Exception as e:
+        print(f"[ERROR] Exception: {e}")
         if not yesno("Continue anyway?"):
             sys.exit(1)
-        return e
+        return 1
 
 def yesno(prompt):
     while True:
@@ -581,6 +593,7 @@ def chroot_env():
 def emerge_sync():
     print_section("Syncing Portage Tree")
     run_cmd("emerge --sync")
+    run_cmd("emerge-webrsync")
     pause()
 
 def select_profile():
@@ -1058,6 +1071,8 @@ def ensure_disk_backed_tmpdirs():
         print("[INFO] Ensured PORTAGE_TMPDIR is set to /var/tmp in make.conf")
 
 def run_emerge_with_auto_circular_fix(emerge_cmd):
+    # Replace --ask with --verbose --nospinner --quiet-build=n for non-interactive
+    emerge_cmd = re.sub(r'--ask', '--verbose --nospinner --quiet-build=n', emerge_cmd)
     import subprocess
     result = subprocess.run(emerge_cmd, shell=True, capture_output=True, text=True)
     if result.returncode == 0:
