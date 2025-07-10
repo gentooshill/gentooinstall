@@ -654,11 +654,13 @@ def handle_circular_dependency_and_retry(emerge_cmd, emerge_output):
     import os
     import re
     import subprocess
-    # Look for the suggested USE flag change
-    match = re.search(r'- (\S+) \(Change USE: ([-+\w ]+)\)', emerge_output)
-    if match:
-        pkg = match.group(1)
-        use_flags = match.group(2).replace('Change USE:', '').strip()
+    # Find all suggested USE flag changes in the output
+    suggestions = re.findall(r'- (\S+) \(Change USE: ([^\)]+)\)', emerge_output)
+    if not suggestions:
+        print('[INFO] No circular dependency workaround found in emerge output.')
+        return False
+    for pkg, use_flags in suggestions:
+        use_flags = use_flags.strip()
         # Determine package.use file or directory
         use_path = '/etc/portage/package.use'
         if os.path.isdir(use_path):
@@ -669,15 +671,13 @@ def handle_circular_dependency_and_retry(emerge_cmd, emerge_output):
         with open(use_file, 'a') as f:
             f.write(f'\n{pkg} {use_flags}\n')
         print(f'[AUTO] Added USE flag override: {pkg} {use_flags}')
-        # Retry the emerge command
-        result = subprocess.run(emerge_cmd, shell=True)
-        if result.returncode == 0:
-            print('[OK] Emerge succeeded after breaking circular dependency.')
-            return True
-        else:
-            print('[FAIL] Emerge still failed after USE flag override.')
+    # Retry the emerge command ONCE
+    result = subprocess.run(emerge_cmd, shell=True)
+    if result.returncode == 0:
+        print('[OK] Emerge succeeded after breaking circular dependency.')
+        return True
     else:
-        print('[INFO] No circular dependency workaround found in emerge output.')
+        print('[FAIL] Emerge still failed after USE flag override.')
     return False
 
 def robust_emerge_linux_headers():
