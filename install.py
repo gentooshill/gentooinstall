@@ -454,7 +454,7 @@ def chroot_env():
     print("[INFO] Now inside chroot. Continue with the following steps.")
     # After chroot, ensure /var/tmp and /tmp are on disk
     chroot_fix_tmp = (
-        "chroot /mnt/gentoo /bin/bash -c 'python3 -c "import sys; exec(\"""\n"
+        "chroot /mnt/gentoo /bin/bash -c 'python3 -c \"import sys; exec(\\\"""\n"
         "import os, subprocess\n"
         "def fix():\n"
         "    for path in [\\\"/var/tmp\\\", \\\"/tmp\\\"]:\n"
@@ -488,7 +488,7 @@ def chroot_env():
         "        with open(make_conf, \\\"w\\\") as f:\n"
         "            f.writelines(lines)\n"
         "fix()\n"
-        "\"\"")'"
+        "\"\"\"\"'"
     )
     run_cmd(chroot_fix_tmp)
     pause()
