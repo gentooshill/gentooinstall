@@ -650,9 +650,47 @@ def ensure_kernel_sources():
     run_cmd(f"eselect kernel set {idx}")
     print("[INFO] Kernel sources installed and symlinked.")
 
+def robust_emerge_linux_headers():
+    import subprocess
+    import sys
+    import re
+
+    def run(cmd):
+        print(f'[RUN] {cmd}')
+        return subprocess.run(cmd, shell=True)
+
+    # Sync and clean
+    run('emerge --sync')
+    run('eclean-dist --deep')
+    run('eclean-pkg --deep')
+    run('rm -rf /var/tmp/portage/*')
+
+    # Try latest stable
+    result = run('emerge -av sys-kernel/linux-headers')
+    if result.returncode == 0:
+        print('[OK] linux-headers installed successfully.')
+        return
+
+    # Try previous version(s)
+    print('[WARN] Latest linux-headers failed, trying previous version(s)...')
+    out = subprocess.check_output('emerge -s ^sys-kernel/linux-headers$', shell=True, text=True)
+    # Find all available versions
+    versions = re.findall(r'Available versions:.*?((?:\d+\.)+\d+)', out)
+    tried = set()
+    for v in re.findall(r'(\d+\.\d+)', out):
+        if v not in tried:
+            tried.add(v)
+            print(f'[TRY] emerge -av =sys-kernel/linux-headers-{v}')
+            result = run(f'emerge -av =sys-kernel/linux-headers-{v}')
+            if result.returncode == 0:
+                print(f'[OK] linux-headers-{v} installed successfully.')
+                return
+    print('[FATAL] All attempts to install linux-headers failed. Please check Gentoo bugzilla or try again later.')
+    sys.exit(1)
+
 def ensure_toolchain_and_headers():
     print_section("Ensuring toolchain and kernel headers are present")
-    run_cmd("emerge --ask sys-kernel/linux-headers")
+    robust_emerge_linux_headers()
     run_cmd("emerge --ask sys-devel/autoconf sys-devel/automake sys-devel/libtool")
 
 def update_world():
